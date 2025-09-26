@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Stream Client</title>
+</head>
+<body>
+    <h1>Audio Stream Player</h1>
+    <button onclick="connect()">Connect</button>
+    <button onclick="disconnect()">Disconnect</button>
+    <div id="status">Status: Disconnected</div>
+
+    <script>
+        let ws = null;
+        let audioContext = null;
+        let audioQueue = [];
+
+        function connect() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                return;
+            }
+
+            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            updateStatus('Connecting...');
+            
+            ws.onopen = () => {
+                console.log('Connected to server');
+                initializeAudio();
+            };
+            
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    // Преобразование Blob в ArrayBuffer
+                    const arrayBuffer = await event.data.arrayBuffer();
+                    await processAudioData(arrayBuffer);
+                } else if (typeof event.data === 'string') {
+                    console.log('Text message:', event.data);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                updateStatus('Error: ' + error);
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                updateStatus('Disconnected');
+            };
+        }
+
+        function initializeAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('Audio context initialized');
+            }
+        }
+
+        async function processAudioData(arrayBuffer) {
+            try {
+                if (!audioContext) {
+                    initializeAudio();
+                }
+
+                // Декодирование аудио данных
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // Воспроизведение
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+                
+                console.log('Audio played successfully');
+                
+            } catch (error) {
+                console.error('Audio processing error:', error);
+                updateStatus('Audio error: ' + error.message);
+            }
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = 'Status: ' + message;
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            if (audioContext) {
+                audioContext.close().then(() => {
+                    audioContext = null;
+                    console.log('Audio context closed');
+                });
+            }
+            updateStatus('Disconnected');
+        }
+
+        // Автоподключение при загрузке страницы
+        window.addEventListener('load', connect);
+    </script>
+</body>
+</html>

@@ -36,8 +36,11 @@ class RadioServer:
         self.audio_buffer = deque(maxlen=1000)
         self.current_position = 0
         self.is_playing = True
-        self.currentFilename = ""
-        self.currentIndex = -1
+        self.currentFilename = getTracks()[0]
+        self.currentIndex = 0
+        self.audioTask = asyncio.create_task(self.broadcast_audio(
+                            self.read_mp3_chunks()
+                        ))
 
     async def html_handler_next(self, request):
         self.nextSound()
@@ -45,12 +48,15 @@ class RadioServer:
         return web.HTTPFound(location='/')
 
     def nextSound(self):
-        if (len(getTracks()) == self.currentIndex + 1): self.currentIndex = 0
-        else: self.currentIndex += 1
-        self.currentFilename = getTracks()[self.currentIndex]
-        print(self.currentIndex, self.currentFilename)
+        try:
+            self.currentIndex += 1
+            self.currentFilename = getTracks()[self.currentIndex]
+        except IndexError:
+            self.currentIndex = 0
+            self.currentFilename = getTracks()[self.currentIndex]
 
-        asyncio.create_task(self.broadcast_audio(
+        self.audioTask.cancel()
+        self.audioTask = asyncio.create_task(self.broadcast_audio(
             self.read_mp3_chunks()
         ))
     
@@ -99,7 +105,7 @@ class RadioServer:
     async def read_mp3_chunks(self, chunk_duration=3.0):
         """Чтение MP3 и преобразование в WAV чанки с заголовком"""
         try:
-            data, sample_rate = sf.read("audio/" + self.currentFilename, dtype='float32')
+            data, sample_rate = sf.read(r"audio/" + self.currentFilename, dtype='float32')
             channels = 1 if len(data.shape) == 1 else data.shape[1]
             last = self.currentFilename
             flag = False
@@ -124,12 +130,12 @@ class RadioServer:
                     yield full_wav, sample_rate, channels
                     print("sended chunk")
                     
-                    # await asyncio.sleep(chunk_duration - chunk_duration * 0.01)
+                    await asyncio.sleep(chunk_duration)
                 else:
                     break; flag = True
 
-            if flag==False: nextSound()
-                
+            if flag==False: self.nextSound()
+                    
         except Exception as e:
             print(f"Ошибка: {e}")
     
@@ -185,7 +191,6 @@ class RadioServer:
 
 async def main():
     server = RadioServer()
-    server.nextSound()
     await server.start_server()
 
 if __name__ == '__main__':

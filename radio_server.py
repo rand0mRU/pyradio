@@ -44,8 +44,10 @@ class RadioServer:
 
     async def html_handler_next(self, request):
         self.nextSound()
-
-        return web.HTTPFound(location='/')
+        return web.json_response({ 'success': true })
+    async def html_handler_previous(self, request):
+        self.previousSound()
+        return web.json_response({ 'success': true })
 
     def nextSound(self):
         try:
@@ -53,6 +55,20 @@ class RadioServer:
             self.currentFilename = getTracks()[self.currentIndex]
         except IndexError:
             self.currentIndex = 0
+            self.currentFilename = getTracks()[self.currentIndex]
+
+        self.audioTask.cancel()
+        self.audioTask = asyncio.create_task(self.broadcast_audio(
+            self.read_mp3_chunks()
+        ))
+
+    def previousSound(self):
+        try:
+            self.currentIndex -= 1
+            if self.currentIndex < 0: raise IndexError("nu da")
+            self.currentFilename = getTracks()[self.currentIndex]
+        except IndexError:
+            self.currentIndex = len(getTracks()) - 1
             self.currentFilename = getTracks()[self.currentIndex]
 
         self.audioTask.cancel()
@@ -175,6 +191,7 @@ class RadioServer:
         app.router.add_get('/status', self.status_handler)
         app.router.add_get('/', html_handler)
         app.router.add_get('/next', self.html_handler_next)
+        app.router.add_get('/previous', self.html_handler_previous)
         app.router.add_static('/', 'static/')
         
         runner = web.AppRunner(app)
